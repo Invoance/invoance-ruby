@@ -1,19 +1,24 @@
 # Auto-publish to RubyGems via Trusted Publishing (OIDC) when a tag matching
-# `v*` is pushed. No RubyGems API key required.
+# `v*` is pushed. No RubyGems API key required — and it works for the very first
+# release of a new gem, too.
+#
+# We do NOT use rubygems/release-gem here: that action runs `rake release`, which
+# creates + pushes the git tag itself. Since this workflow is *triggered by* a
+# pushed tag, that would fail on an already-existing tag. Instead we set up OIDC
+# credentials and `gem push` directly.
 #
 # To release:
 #   1. Bump VERSION in lib/invoance/version.rb, update CHANGELOG.md, commit, push.
 #   2. Tag and push:
 #        git tag v0.1.0 -m "0.1.0"
 #        git push origin v0.1.0
-#   3. This workflow verifies the tag, tests, and publishes the gem.
 #
-# One-time RubyGems Trusted Publishing setup:
-#   1. Reserve/own the `invoance` gem name (first publish may need an API key,
-#      or push a 0.0.0 placeholder — see rubygems.org docs).
-#   2. rubygems.org -> the `invoance` gem -> Trusted Publishers -> add GitHub:
-#        Repository: Invoance/invoance-ruby
-#        Workflow:   release.yml
+# One-time RubyGems Trusted Publishing setup (no token, new gem OK):
+#   rubygems.org -> Profile -> Trusted Publishers -> Create (for a new gem):
+#        RubyGems gem name: invoance
+#        Repository:        Invoance/invoance-ruby
+#        Workflow filename: release.yml
+#        Environment:       (leave blank)
 
 name: Release to RubyGems
 
@@ -48,8 +53,13 @@ jobs:
 
       - run: bundle exec rspec
 
-      - name: Publish to RubyGems (Trusted Publishing)
-        uses: rubygems/release-gem@v1
+      - name: Configure RubyGems OIDC credentials (Trusted Publishing)
+        uses: rubygems/configure-rubygems-credentials@v2.1.0
+
+      - name: Build and push the gem
+        run: |
+          gem build invoance.gemspec
+          gem push invoance-*.gem
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
