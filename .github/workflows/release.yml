@@ -1,0 +1,64 @@
+# Auto-publish to RubyGems via Trusted Publishing (OIDC) when a tag matching
+# `v*` is pushed. No RubyGems API key required.
+#
+# To release:
+#   1. Bump VERSION in lib/invoance/version.rb, update CHANGELOG.md, commit, push.
+#   2. Tag and push:
+#        git tag v0.1.0 -m "0.1.0"
+#        git push origin v0.1.0
+#   3. This workflow verifies the tag, tests, and publishes the gem.
+#
+# One-time RubyGems Trusted Publishing setup:
+#   1. Reserve/own the `invoance` gem name (first publish may need an API key,
+#      or push a 0.0.0 placeholder — see rubygems.org docs).
+#   2. rubygems.org -> the `invoance` gem -> Trusted Publishers -> add GitHub:
+#        Repository: Invoance/invoance-ruby
+#        Workflow:   release.yml
+
+name: Release to RubyGems
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write        # to create the GitHub Release
+  id-token: write        # required for RubyGems Trusted Publishing OIDC
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+
+      - name: Verify tag matches version.rb
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(grep -oE 'VERSION = "[^"]+"' lib/invoance/version.rb | sed -E 's/.*"([^"]+)".*/\1/')
+          if [ "$TAG" != "$PKG" ]; then
+            echo "ERROR: tag $GITHUB_REF_NAME does not match version.rb $PKG" >&2
+            exit 1
+          fi
+          echo "Tag $GITHUB_REF_NAME matches version.rb $PKG"
+
+      - run: bundle exec rspec
+
+      - name: Publish to RubyGems (Trusted Publishing)
+        uses: rubygems/release-gem@v1
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          body: |
+            See [CHANGELOG](CHANGELOG.md) for details.
+
+            ```bash
+            gem install invoance
+            ```
