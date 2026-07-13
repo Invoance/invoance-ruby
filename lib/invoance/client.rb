@@ -53,14 +53,23 @@ module Invoance
       @config.base_url
     end
 
-    # Probe a cheap authenticated endpoint (GET /v1/events?limit=1) to
-    # confirm the API key works. NEVER raises.
+    # Introspect the API key via GET /v1/me. Requires no scope, so it works
+    # for any valid key. Raises like every other resource call.
+    #
+    # @return [Hash] { "valid" =>, "organization" =>, "tenant" =>,
+    #   "api_key" =>, "limits" => } (string keys, wire JSON as-is)
+    def me
+      @http.get("/me")
+    end
+
+    # Call the scope-free introspection endpoint (GET /v1/me) to confirm
+    # the API key works. NEVER raises.
     #
     # @return [Hash] { "valid" =>, "reason" =>, "base_url" => }
     def validate
       base = @config.base_url
       begin
-        @events.list(limit: 1)
+        me
         { "valid" => true, "reason" => nil, "base_url" => base }
       rescue AuthenticationError
         { "valid" => false,
@@ -68,7 +77,7 @@ module Invoance
           "base_url" => base }
       rescue ForbiddenError
         { "valid" => true,
-          "reason" => "API key authenticated but lacks permission to list events",
+          "reason" => "API key authenticated but the request was blocked (IP access rules)",
           "base_url" => base }
       rescue QuotaExceededError
         { "valid" => true,

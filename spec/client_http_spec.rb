@@ -96,26 +96,73 @@ RSpec.describe "HTTP round-trips (WebMock)" do
   end
 
   describe "client.validate" do
-    it "returns valid:true on success" do
-      stub_request(:get, "https://api.test/v1/events?limit=1")
-        .to_return(status: 200, body: JSON.generate("events" => []))
+    let(:me_body) do
+      {
+        "valid" => true,
+        "organization" => {
+          "id" => "org_1", "name" => "Acme", "issuer_name" => "Acme Corp",
+          "primary_domain" => "acme.test", "domain_verified" => true,
+          "plan_tier" => "growth"
+        },
+        "tenant" => { "id" => "ten_1", "name" => "Acme" },
+        "api_key" => {
+          "id" => "key_1", "key_prefix" => "inv_test", "key_last4" => "_key",
+          "scopes" => ["audit:read", "audit:write"],
+          "created_at" => "2026-01-01T00:00:00Z"
+        },
+        "limits" => { "rate_limit_per_sec" => 50 }
+      }
+    end
+
+    it "returns valid:true on 200 from GET /v1/me" do
+      stub = stub_request(:get, "https://api.test/v1/me")
+             .to_return(status: 200, body: JSON.generate(me_body))
       expect(client.validate).to eq(
         "valid" => true, "reason" => nil, "base_url" => "https://api.test"
       )
+      expect(stub).to have_been_requested
+    end
+
+    it "validates a key with only audit:* scopes (no events probe)" do
+      stub_request(:get, "https://api.test/v1/me")
+        .to_return(status: 200, body: JSON.generate(me_body))
+      result = client.validate
+      expect(result["valid"]).to be(true)
+      expect(result["reason"]).to be_nil
+      expect(a_request(:get, %r{/v1/events})).not_to have_been_made
     end
 
     it "classifies 401 as invalid without raising" do
-      stub_request(:get, "https://api.test/v1/events?limit=1")
-        .to_return(status: 401, body: JSON.generate("error" => "bad_key"))
+      stub_request(:get, "https://api.test/v1/me")
+        .to_return(status: 401, body: JSON.generate("error" => "invalid_api_key"))
       result = client.validate
       expect(result["valid"]).to be(false)
       expect(result["reason"]).to match(/Authentication failed/)
     end
 
-    it "treats 403 as authenticated-but-forbidden (valid:true)" do
-      stub_request(:get, "https://api.test/v1/events?limit=1")
+    it "treats 403 (IP access rules) as authenticated-but-blocked (valid:true)" do
+      stub_request(:get, "https://api.test/v1/me")
         .to_return(status: 403, body: JSON.generate("error" => "forbidden"))
-      expect(client.validate["valid"]).to be(true)
+      result = client.validate
+      expect(result["valid"]).to be(true)
+      expect(result["reason"]).to match(/IP access rules/)
+    end
+  end
+
+  describe "client.me" do
+    it "GETs /v1/me and returns the parsed body untouched" do
+      body = { "valid" => true, "tenant" => { "id" => "ten_1", "name" => "Acme" } }
+      stub = stub_request(:get, "https://api.test/v1/me")
+             .with(headers: { "Authorization" => "Bearer inv_test_key" })
+             .to_return(status: 200, body: JSON.generate(body))
+      expect(client.me).to eq(body)
+      expect(stub).to have_been_requested
+    end
+
+    it "raises AuthenticationError on 401 (unlike validate)" do
+      stub_request(:get, "https://api.test/v1/me")
+        .to_return(status: 401, body: JSON.generate("error" => "invalid_api_key"))
+      expect { client.me }.to raise_error(Invoance::AuthenticationError)
     end
   end
 end

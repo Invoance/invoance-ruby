@@ -59,6 +59,16 @@ module Invoance
       handle(resp, ctx)
     end
 
+    # PATCH returning parsed JSON.
+    def patch(path, body = nil)
+      uri = build_uri(path)
+      ctx = { method: "PATCH", path: path }
+      req = Net::HTTP::Patch.new(uri)
+      req.body = JSON.generate(body) unless body.nil?
+      resp = do_request(req, uri, ctx, headers: @base_headers)
+      handle(resp, ctx)
+    end
+
     # DELETE returning parsed JSON.
     def delete(path)
       uri = build_uri(path)

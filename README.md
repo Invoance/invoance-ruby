@@ -53,6 +53,10 @@ puts event["event_id"]
 # Verify the API key / connectivity (never raises)
 result = client.validate
 raise "bad config: #{result["reason"]}" unless result["valid"]
+
+# Introspect the key — org, tenant, scopes, limits (GET /v1/me; raises on error)
+whoami = client.me
+puts whoami["api_key"]["scopes"]
 ```
 
 Responses are plain Ruby `Hash`es with **string keys** matching the wire JSON

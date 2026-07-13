@@ -107,9 +107,36 @@ module Invoance
           @http.post("/audit/orgs", body)
         end
 
-        # GET /audit/orgs
-        def list
-          @http.get("/audit/orgs")
+        # GET /audit/orgs — archived orgs are excluded unless
+        # include_archived: true is passed.
+        def list(include_archived: nil)
+          @http.get("/audit/orgs", { "include_archived" => include_archived })
+        end
+
+        # PATCH /audit/orgs/:org_id — rename. Pass name: nil to clear the
+        # name (sends JSON null).
+        def update(organization_id, name:)
+          @http.patch("/audit/orgs/#{organization_id}", { "name" => name })
+        end
+
+        # POST /audit/orgs/:org_id/archive — idempotent. Freezes new
+        # activity (ingest/streams/portal/exports return 409 org_archived);
+        # history stays verifiable.
+        def archive(organization_id)
+          @http.post("/audit/orgs/#{organization_id}/archive")
+        end
+
+        # POST /audit/orgs/:org_id/unarchive — idempotent.
+        def unarchive(organization_id)
+          @http.post("/audit/orgs/#{organization_id}/unarchive")
+        end
+
+        # DELETE /audit/orgs/:org_id — hard delete, allowed only when
+        # nothing signed would be destroyed (never-ingested org, or
+        # archived + retention fully purged). Raises ConflictError
+        # (org_not_deletable) otherwise.
+        def delete(organization_id)
+          @http.delete("/audit/orgs/#{organization_id}")
         end
 
         # GET /audit/orgs/:org_id/integrity
